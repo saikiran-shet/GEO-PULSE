@@ -1,0 +1,6 @@
+﻿streamlit
+google-generativeai
+tavily-python
+edge-tts
+python-dotenv
+streamlit-mic-recorder
