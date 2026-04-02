@@ -2,4 +2,4 @@
 .env
 __pycache__/
 *.mp3
-.streamlit/
+.streamlit/ .streamlit/secrets.toml
