@@ -6,10 +6,18 @@ from tavily import TavilyClient
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# --- 1. SETUP ---
+# --- 1. CONFIGURATION & API SETUP ---
 load_dotenv()
-tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Check if running on Streamlit Cloud (st.secrets) or locally (.env)
+GEMINI_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+TAVILY_KEY = st.secrets.get("TAVILY_API_KEY") or os.getenv("TAVILY_API_KEY")
+
+if GEMINI_KEY and TAVILY_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+    tavily = TavilyClient(api_key=TAVILY_KEY)
+else:
+    st.error("🔑 API Keys missing! Please configure Secrets in Streamlit Cloud.")
 
 # --- 2. THE INTELLIGENCE ENGINE ---
 def get_targeted_intel(query, category="General"):
