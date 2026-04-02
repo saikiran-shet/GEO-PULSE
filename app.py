@@ -8,15 +8,27 @@ from dotenv import load_dotenv
 
 # --- 1. SECURE CONFIGURATION ---
 load_dotenv()
-# Supports both Local (.env) and Cloud (st.secrets)
-GEMINI_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-TAVILY_KEY = st.secrets.get("TAVILY_API_KEY") or os.getenv("TAVILY_API_KEY")
+
+# Safe Secret Loading Logic
+def get_secret(key):
+    # 1. Try Streamlit Cloud Secrets first
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+    # 2. Fallback to local .env file
+    return os.getenv(key)
+
+GEMINI_KEY = get_secret("GEMINI_API_KEY")
+TAVILY_KEY = get_secret("TAVILY_API_KEY")
 
 if GEMINI_KEY and TAVILY_KEY:
     genai.configure(api_key=GEMINI_KEY)
     tavily = TavilyClient(api_key=TAVILY_KEY)
 else:
-    st.error("🔑 API Keys missing! Please check .env or Streamlit Secrets.")
+    st.error("🔑 API Keys missing! Ensure they are in your .env file locally.")
+    st.stop() # Stops the app here so it doesn't crash later
 
 # --- 2. INTELLIGENCE ENGINE ---
 def get_targeted_intel(query, category="General"):
