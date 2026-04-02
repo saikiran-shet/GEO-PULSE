@@ -5,84 +5,92 @@ import edge_tts
 from tavily import TavilyClient
 import google.generativeai as genai
 from dotenv import load_dotenv
-from streamlit_mic_recorder import speech_to_text # New Import
 
 # --- 1. SETUP ---
 load_dotenv()
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-TAVILY_KEY = os.getenv("TAVILY_API_KEY")
+tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-if GEMINI_KEY and TAVILY_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-    tavily = TavilyClient(api_key=TAVILY_KEY)
-else:
-    st.error("API Keys missing in .env!")
-
-# --- 2. INTELLIGENCE FUNCTIONS ---
-def get_intel(query):
-    search_query = f"{query} news business impact April 2026"
+# --- 2. THE INTELLIGENCE ENGINE ---
+def get_targeted_intel(query, category="General"):
+    # Targeted scraping: focusing on high-authority news
+    search_query = f"site:indiatoday.in OR site:reuters.com {query} {category} news April 2026"
     search = tavily.search(query=search_query, search_depth="advanced", max_results=5)
-    context = "\n".join([r['content'] for r in search['results']])
+    context = "\n".join([f"Source: {r['url']}\nContent: {r['content']}" for r in search['results']])
     
     prompt = f"""
-    Analyze: '{query}' for a business professional.
-    Context: {context}
-    1. FLASHPOINT: What happened? 2. IMPACT: Business/Economy sectors. 3. BOTTOM LINE.
+    Context (April 2026): {context}
+    User Query: {query}
+    Category: {category}
+    
+    Task: Provide a high-level 'Executive Brief'. 
+    Focus: 1. Latest Headline 2. Business/Market Impact 3. 48-hour Outlook.
+    Keep it professional and under 150 words.
     """
     model = genai.GenerativeModel('gemini-flash-latest')
     return model.generate_content(prompt).text
 
-async def speak(text):
+async def text_to_speech(text):
     communicate = edge_tts.Communicate(text, "en-US-GuyNeural")
-    await communicate.save("brief.mp3")
+    await communicate.save("response.mp3")
 
-# --- 3. UI STRUCTURE ---
+# --- 3. UI DASHBOARD ---
 st.set_page_config(page_title="GeoPulse AI", layout="wide")
 
-if 'history' not in st.session_state:
-    st.session_state.history = []
+if 'history' not in st.session_state: st.session_state.history = []
 
+# Sidebar
 with st.sidebar:
-    st.title("📜 History")
-    for item in st.session_state.history:
-        st.caption(f"🕒 {item}")
+    st.title("📜 Intelligence Log")
+    for h in st.session_state.history[:5]: st.caption(f"🕒 {h}")
 
-st.title("🌍 GeoPulse AI")
+st.title("🌍 GeoPulse Command Center")
 
-# --- 4. THE HANDS-FREE TRIGGER ---
-st.write("### 🎙️ Voice Command")
-# This replaces the need for typing. It records, transcribes, and returns text.
-v_input = speech_to_text(
-    language='en',
-    start_prompt="Click to Speak",
-    stop_prompt="Stop Listening",
-    just_once=True,
-    key='STT'
-)
+# --- 4. CATEGORY TILES ---
+st.write("### 📂 Choose Category")
+cols = st.columns(4)
+selected_cat = "General"
 
-# Quick Shortcuts (One-tap info)
+# Using a session state to track the active category
+if "active_cat" not in st.session_state: st.session_state.active_cat = "General"
+
+with cols[0]: 
+    if st.button("📈 Markets", use_container_width=True): st.session_state.active_cat = "Markets"
+with cols[1]: 
+    if st.button("⚔️ Geopolitics", use_container_width=True): st.session_state.active_cat = "Geopolitics"
+with cols[2]: 
+    if st.button("🇮🇳 India Today", use_container_width=True): st.session_state.active_cat = "India National"
+with cols[3]: 
+    if st.button("🔋 Energy", use_container_width=True): st.session_state.active_cat = "Energy"
+
+st.info(f"Current Mode: **{st.session_state.active_cat}**")
+
+# --- 5. THE NEW HANDS-FREE WIDGET ---
 st.write("---")
-st.write("🚀 **Quick Briefs**")
-c1, c2, c3 = st.columns(3)
-btn_query = None
-with c1: 
-    if st.button("Gold Rate", use_container_width=True): btn_query = "Gold rate hike India"
-with c2: 
-    if st.button("UN Decision", use_container_width=True): btn_query = "UN decision impact India"
-with c3: 
-    if st.button("Nifty 50", use_container_width=True): btn_query = "Nifty 50 geopolitical impact"
+# Native Streamlit Audio Input (Replaces all buggy plugins)
+audio_input = st.audio_input("🎙️ Record Voice Command")
+chat_input = st.chat_input("Or type your briefing request...")
 
-# --- 5. EXECUTION ---
-# Trigger if voice input exists OR a button was clicked
-final_query = v_input if v_input else btn_query
+# --- 6. PROCESSING LOGIC ---
+final_query = None
+
+# If user recorded audio
+if audio_input:
+    # In a full build, we'd send 'audio_input' to Gemini/Whisper for transcription.
+    # For now, let's trigger a category-based summary.
+    final_query = f"Latest news on {st.session_state.active_cat}"
+
+# If user typed
+if chat_input:
+    final_query = chat_input
 
 if final_query:
-    if final_query not in st.session_state.history:
-        st.session_state.history.insert(0, final_query)
-    
-    with st.spinner(f"Analyzing {final_query}..."):
-        report = get_intel(final_query)
-        st.markdown(report)
+    st.session_state.history.insert(0, final_query)
+    with st.spinner(f"Scraping global intelligence for {st.session_state.active_cat}..."):
+        report = get_targeted_intel(final_query, st.session_state.active_cat)
         
-        asyncio.run(speak(report))
-        st.audio("brief.mp3", format="audio/mp3", autoplay=True)
+        st.chat_message("assistant").write(report)
+        
+        # Audio Response
+        asyncio.run(text_to_speech(report))
+        st.audio("response.mp3", format="audio/mp3", autoplay=True)
